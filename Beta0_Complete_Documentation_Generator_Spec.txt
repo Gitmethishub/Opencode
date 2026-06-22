@@ -1,0 +1,1029 @@
+
+BETA 0 MARKET RISK DOCUMENTATION GENERATOR
+COMPLETE IMPLEMENTATION SPECIFICATION
+
+VERSION
+=======
+
+Beta 0.
+
+This is a proof-of-concept version. It must be minimal, but it must still be precise and working.
+
+The tool is not a Python package yet. It should be implemented as a single Python file, for example:
+
+beta0_docgen.py
+
+The user runs the tool with:
+
+python beta0_docgen.py
+
+
+1. OBJECTIVE
+============
+
+Build a minimal Python tool that generates a static HTML documentation website from a folder of Markdown files.
+
+The Markdown files represent documentation nodes.
+
+The generated HTML files represent documentation pages.
+
+The generated website must allow the user to navigate the selected documentation graph through clickable HTML links.
+
+The generated website must not require:
+
+- MkDocs
+- Mermaid
+- Graphviz
+- a web server
+- a database
+- an internet connection
+
+The only required Python dependencies are:
+
+- PyYAML
+- Markdown
+
+The generated site must support local MathJax for formulas.
+
+The graph page must be plain HTML text, not Mermaid, not SVG, not Canvas, not an image.
+
+The graph page must show the selected profile graph as clickable text relationships with arrows.
+
+
+2. TERMINOLOGY
+==============
+
+Node
+----
+
+A node is a source Markdown file.
+
+Example:
+
+IRReturns.md
+
+Page
+----
+
+A page is the generated HTML file associated with a node.
+
+Example:
+
+IRReturns.md -> IRReturns.html
+
+Rule:
+
+One node generates exactly one page.
+
+Never generate multiple pages for the same node.
+
+
+3. NODE TYPES
+=============
+
+There are exactly two node types:
+
+1. data
+2. model
+
+Data node
+---------
+
+A data node represents a data object, input, output, intermediate dataset, report, model input, or model output.
+
+Examples:
+
+- IRCurves
+- IRReturns
+- PortfolioPositions
+- VaRResult
+
+Model node
+----------
+
+A model node represents a calculation, process, transformation, algorithm, model, or workflow step.
+
+Examples:
+
+- CalculateIRReturns
+- HistoricalVaR
+- MonteCarloVaR
+
+
+4. GRAPH RULES
+==============
+
+The graph is bipartite.
+
+Allowed relationships:
+
+Data -> Model
+Model -> Data
+
+Forbidden relationships:
+
+Data -> Data
+Model -> Model
+
+A model node defines graph edges through its metadata:
+
+inputs:
+  - DataNodeId
+
+outputs:
+  - DataNodeId
+
+Each input creates an edge:
+
+InputData -> Model
+
+Each output creates an edge:
+
+Model -> OutputData
+
+
+5. FILE STRUCTURE
+=================
+
+The expected project structure is:
+
+project/
+
+  beta0_docgen.py
+
+  profile.yml
+
+  assets/
+    mathjax/
+      tex-mml-chtml.js
+
+  nodes/
+    SomeDataNode.md
+    SomeModelNode.md
+
+  site/
+    generated files go here
+
+
+6. NODE FILE FORMAT
+===================
+
+Every node is a Markdown file with YAML front matter.
+
+The file format is:
+
+---
+YAML metadata
+---
+
+Markdown body
+
+
+7. COMMON NODE METADATA
+=======================
+
+Every node must have:
+
+id: string
+title: string
+node_type: data | model
+
+Example:
+
+---
+id: IRReturns
+title: Interest Rate Returns
+node_type: data
+---
+
+
+8. DATA NODE METADATA
+=====================
+
+A data node must have:
+
+id
+title
+node_type: data
+role
+notation
+
+role may be:
+
+source
+derived
+
+Notation must always exist, but it may be empty.
+
+Minimal valid data node:
+
+---
+id: MarketData
+title: Market Data
+node_type: data
+role: source
+
+notation:
+  object:
+    symbol: ""
+    description: ""
+  fields: {}
+---
+
+# Market Data
+
+Markdown content here.
+
+
+9. DATA NODE NOTATION
+=====================
+
+Notation belongs only to data nodes.
+
+Model nodes do not define notation. They only use notation defined by data nodes.
+
+A data node notation section has this form:
+
+notation:
+
+  object:
+    symbol: string
+    description: string
+
+  fields:
+
+    field_name:
+      symbol: string
+      description: string
+
+Object notation
+---------------
+
+notation.object represents the full data object.
+
+Example:
+
+notation:
+  object:
+    symbol: "\\Delta r(T,Instr,\\Delta t)"
+    description: "Interest-rate return object."
+
+This object symbol can be referenced from a model node body using:
+
+{{ returns }}
+
+if the model node defines:
+
+notation_aliases:
+  returns: IRReturns
+
+Field notation
+--------------
+
+notation.fields contains named fields.
+
+Example:
+
+notation:
+  fields:
+    tenor:
+      symbol: "T"
+      description: "Tenor of the instrument."
+
+    return_value:
+      symbol: "\\Delta r"
+      description: "Observed interest-rate return."
+
+Each notation field must have:
+
+symbol
+description
+
+The beta implementation may not enforce full validation, but the specification requires these fields to exist.
+
+10. MODEL NODE METADATA
+=======================
+
+A model node must have:
+
+id
+title
+node_type: model
+inputs
+outputs
+
+Optional:
+
+notation_aliases
+
+Example:
+
+---
+id: CalculateIRReturns
+title: Calculate Interest Rate Returns
+node_type: model
+
+inputs:
+  - IRCurves
+
+outputs:
+  - IRReturns
+
+notation_aliases:
+  curves: IRCurves
+  returns: IRReturns
+---
+
+# Calculate Interest Rate Returns
+
+Markdown content here.
+
+
+11. MODEL NODE NOTATION USAGE IN MARKDOWN BODY
+==============================================
+
+This is a required feature.
+
+A model node must be able to use notation from its input and output data nodes inside its Markdown body.
+
+The notation syntax must be resolved before Markdown is converted to HTML.
+
+Short field syntax
+------------------
+
+Given this model metadata:
+
+notation_aliases:
+  returns: IRReturns
+
+and this data node notation:
+
+IRReturns:
+  notation:
+    fields:
+      tenor:
+        symbol: "T"
+
+The model body may contain:
+
+{{ returns.tenor }}
+
+The generator must replace it with:
+
+T
+
+before Markdown rendering.
+
+Object syntax
+-------------
+
+Given:
+
+notation_aliases:
+  returns: IRReturns
+
+and:
+
+IRReturns:
+  notation:
+    object:
+      symbol: "\\Delta r(T,Instr,\\Delta t)"
+
+The model body may contain:
+
+{{ returns }}
+
+The generator must replace it with:
+
+\Delta r(T,Instr,\Delta t)
+
+before Markdown rendering.
+
+Formula example
+---------------
+
+A model node body may contain:
+
+The return is defined as:
+
+\[
+{{ returns.return_value }}
+=
+{{ curves.rate }}
+-
+r(t - {{ returns.time_delta }})
+\]
+
+The generator must first resolve notation:
+
+\[
+\Delta r
+=
+r(t,T)
+-
+r(t - \Delta t)
+\]
+
+Then convert Markdown to HTML.
+
+MathJax later renders the formula in the browser.
+
+Important
+---------
+
+The beta tool must support notation placeholders inside normal prose and inside LaTeX blocks.
+
+The beta tool only needs to support:
+
+{{ alias }}
+
+and
+
+{{ alias.field }}
+
+It does not need to support:
+
+{{ alias.field.description }}
+{{ alias.field.symbol }}
+{{ alias.field.unit }}
+
+Those can be added later.
+
+
+12. PROFILE FILE
+================
+
+The profile file is:
+
+profile.yml
+
+It defines:
+
+id
+title
+root
+producer_choices
+
+Example:
+
+id: regulatory_var
+title: Regulatory VaR Documentation
+root: IRReturns
+
+producer_choices:
+  IRReturns: CalculateIRReturns
+
+root
+----
+
+root is the starting data node for documentation generation.
+
+producer_choices
+----------------
+
+producer_choices resolves cases where a data node has multiple possible producer models.
+
+Example:
+
+IRReturns may be output by:
+
+CalculateIRReturns
+BootstrapIRReturns
+
+The profile chooses one:
+
+producer_choices:
+  IRReturns: CalculateIRReturns
+
+
+13. PRODUCER SELECTION RULES
+============================
+
+For Beta 0:
+
+If a data node has zero possible producers:
+
+- it is treated as a source or terminal upstream node.
+
+If a data node has one possible producer:
+
+- select it automatically.
+
+If a data node has more than one possible producer:
+
+- the profile must explicitly choose one in producer_choices.
+
+The tool must not arbitrarily choose among multiple producers.
+
+If ambiguity exists and the profile does not resolve it, the build must raise an error.
+
+
+14. GRAPH CONSTRUCTION
+======================
+
+The tool must read all nodes from the nodes/ folder.
+
+It must build two dictionaries:
+
+producers:
+
+  data_node_id -> list of model_node_ids that output this data node
+
+consumers:
+
+  data_node_id -> list of model_node_ids that input this data node
+
+Example:
+
+If CalculateIRReturns has:
+
+inputs:
+  - IRCurves
+
+outputs:
+  - IRReturns
+
+Then:
+
+consumers["IRCurves"] = ["CalculateIRReturns"]
+
+producers["IRReturns"] = ["CalculateIRReturns"]
+
+
+15. PROFILE GRAPH DISCOVERY
+===========================
+
+The profile graph is the selected graph for the profile.
+
+It starts from:
+
+profile.root
+
+Traversal direction is upstream.
+
+Algorithm:
+
+visit(root)
+
+If current node is data:
+
+- add data node to selected_nodes
+- find selected producer model for this data node
+- if producer exists:
+  - add producer model to selected_nodes
+  - add edge producer -> data
+  - visit producer
+
+If current node is model:
+
+- add model node to selected_nodes
+- for each input:
+  - add input data node to selected_nodes
+  - add edge input -> model
+  - visit input
+- for each output:
+  - add output data node to selected_nodes
+  - add edge model -> output
+  - do not necessarily expand downstream outputs unless needed by traversal
+
+Cycle handling:
+
+Maintain a recursion stack or visited/visiting set.
+
+If a node is encountered again while currently visiting, stop recursion on that branch.
+
+This prevents infinite recursion.
+
+Important:
+
+The selected_edges set should contain all selected edges discovered by the traversal.
+
+The graph page must display all selected_edges.
+
+
+16. PAGE GENERATION RULE
+========================
+
+For every node_id in selected_nodes:
+
+generate:
+
+site/<node_id>.html
+
+Each node is generated once.
+
+If the same node is reached more than once, do not generate another page.
+
+
+17. DATA PAGE CONTENT
+=====================
+
+Each data page must contain:
+
+1. Title
+2. Markdown documentation body rendered as HTML
+3. Notation table
+4. Possible producer models
+5. Possible consumer models
+6. Selected producer in this profile
+7. Navigation links to index.html and profile_graph.html
+
+Possible producer models
+------------------------
+
+Use the full producers dictionary, not only the selected profile graph.
+
+Display every model that outputs this data node.
+
+Each model name must be a hyperlink to its page if the model page exists in the selected profile.
+
+For Beta 0, it is acceptable to assume the linked model page exists if the model is in nodes. However, a better implementation should only link to generated pages and otherwise show plain text.
+
+Possible consumer models
+------------------------
+
+Use the full consumers dictionary.
+
+Display every model that has this data node as input.
+
+Each model name should be clickable if its page exists in the generated site.
+
+Selected producer
+-----------------
+
+Display the selected producer according to profile rules.
+
+If no selected producer exists, display:
+
+None
+
+
+18. MODEL PAGE CONTENT
+======================
+
+Each model page must contain:
+
+1. Title
+2. Markdown documentation body rendered as HTML
+3. Inputs
+4. Outputs
+5. Input notation tables
+6. Output notation tables
+7. Navigation links to index.html and profile_graph.html
+
+Markdown body rendering
+-----------------------
+
+Before Markdown rendering, the model Markdown body must be passed through notation resolution.
+
+Example:
+
+Original model Markdown:
+
+For tenor {{ returns.tenor }}, compute {{ returns.return_value }}.
+
+After notation resolution:
+
+For tenor T, compute \Delta r.
+
+Then convert to HTML using the Markdown package.
+
+Input notation
+--------------
+
+For every input data node, display its notation table.
+
+Output notation
+---------------
+
+For every output data node, display its notation table.
+
+Only input and output data notation must be displayed on a model page.
+
+
+19. NOTATION TABLE
+==================
+
+A notation table should have columns:
+
+Field
+Symbol
+Description
+
+The first row should represent the object notation.
+
+Example:
+
+Field: object
+Symbol: \Delta r(T,Instr,\Delta t)
+Description: Interest-rate return object.
+
+Then one row per field.
+
+Example:
+
+Field: tenor
+Symbol: T
+Description: Tenor of the instrument.
+
+
+20. PROFILE GRAPH PAGE
+======================
+
+Generate:
+
+site/profile_graph.html
+
+This page is the main navigation graph.
+
+Do not use Mermaid.
+
+Do not use Graphviz.
+
+Do not use images.
+
+Do not use SVG.
+
+Represent the graph as plain HTML text.
+
+Each selected edge should be shown as one row:
+
+[Source Node Title] -> [Target Node Title]
+
+Both source and target must be hyperlinks to the corresponding pages.
+
+Example rendered content:
+
+Interest Rate Curves -> Calculate Interest Rate Returns
+
+Calculate Interest Rate Returns -> Interest Rate Returns
+
+The node titles must be clickable.
+
+The page should contain all selected profile edges.
+
+The graph page does not need to be visually perfect. It only needs to be readable, ordered, and clickable.
+
+Ordering
+--------
+
+For Beta 0, ordering can be simple:
+
+sort edges alphabetically by source id and then target id.
+
+Better ordering can be added later.
+
+
+21. INDEX PAGE
+==============
+
+Generate:
+
+site/index.html
+
+The index page must contain:
+
+- profile title
+- link to profile_graph.html
+- list of generated node pages
+
+Each page link must be clickable.
+
+
+22. LOCAL MATHJAX
+=================
+
+The tool must support local MathJax.
+
+Expected source location:
+
+assets/mathjax/tex-mml-chtml.js
+
+Generated target location:
+
+site/assets/mathjax/tex-mml-chtml.js
+
+The generator must copy:
+
+assets/mathjax/
+
+to:
+
+site/assets/mathjax/
+
+Each generated HTML page must include:
+
+<script>
+window.MathJax = {
+    tex: {
+        inlineMath: [["\\(", "\\)"]],
+        displayMath: [["\\[", "\\]"]]
+    }
+};
+</script>
+
+<script defer src="assets/mathjax/tex-mml-chtml.js"></script>
+
+No CDN is allowed.
+
+No internet access must be required.
+
+
+23. HTML PAGE WRAPPER
+=====================
+
+Each generated page should include:
+
+- doctype
+- html
+- head
+- charset utf-8
+- title
+- link to style.css
+- MathJax configuration
+- local MathJax script
+- body
+- header with navigation links
+- page content
+
+Header links:
+
+Index -> index.html
+Profile Graph -> profile_graph.html
+
+
+24. CSS
+=======
+
+Generate:
+
+site/style.css
+
+The style can be simple.
+
+It should make:
+
+- body readable
+- sections separated
+- tables readable
+- graph rows readable
+- data/model links distinguishable if desired
+
+No external CSS framework.
+
+
+25. OUTPUT STRUCTURE
+====================
+
+After running the tool, output should be:
+
+site/
+
+  index.html
+
+  profile_graph.html
+
+  style.css
+
+  assets/
+    mathjax/
+      tex-mml-chtml.js
+
+  IRCurves.html
+
+  CalculateIRReturns.html
+
+  IRReturns.html
+
+
+26. REQUIRED PYTHON DEPENDENCIES
+================================
+
+Install with:
+
+pip install pyyaml markdown
+
+Use only:
+
+- pathlib
+- re
+- shutil
+- yaml
+- markdown
+
+No web framework.
+
+No database.
+
+No package structure required.
+
+
+27. ACCEPTANCE TEST EXAMPLE
+===========================
+
+Given nodes:
+
+IRCurves.md
+CalculateIRReturns.md
+IRReturns.md
+
+and profile:
+
+root: IRReturns
+
+producer_choices:
+  IRReturns: CalculateIRReturns
+
+The tool must generate:
+
+site/index.html
+site/profile_graph.html
+site/IRCurves.html
+site/CalculateIRReturns.html
+site/IRReturns.html
+
+The profile graph page must show clickable relationships:
+
+Interest Rate Curves -> Calculate Interest Rate Returns
+
+Calculate Interest Rate Returns -> Interest Rate Returns
+
+The Calculate Interest Rate Returns page must render notation references from its Markdown body.
+
+If the model Markdown contains:
+
+{{ returns.return_value }}
+
+and the IRReturns data node defines:
+
+return_value:
+  symbol: "\\Delta r"
+
+then the generated HTML must contain:
+
+\Delta r
+
+before MathJax rendering.
+
+
+28. WHAT TO OMIT IN BETA 0
+==========================
+
+Do not implement:
+
+- Mermaid
+- Graphviz
+- search
+- references registry
+- CLI arguments
+- Python package structure
+- strict schema validation
+- multi-profile builds
+- graph analytics
+- full knowledge graph visualization
+- automatic producer selection rules beyond the simple rules above
+- downstream traversal mode
+
+
+29. IMPLEMENTATION STYLE
+========================
+
+A single Python file is acceptable.
+
+Prefer clear functions.
+
+Required high-level functions:
+
+read_node(path)
+
+load_nodes()
+
+load_profile()
+
+build_relationships(nodes)
+
+selected_producer(data_id, producers, profile)
+
+collect_profile_graph(root, nodes, producers, profile)
+
+resolve_notation(text, model_node, nodes)
+
+notation_table(data_node)
+
+render_data_page(...)
+
+render_model_page(...)
+
+render_text_graph(...)
+
+copy_assets()
+
+build()
+
+At the end:
+
+if __name__ == "__main__":
+    build()
+
+
+END OF COMPLETE BETA 0 SPECIFICATION
